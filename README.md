@@ -16,29 +16,7 @@ This is a common pattern when you have separate teams or environments (platform,
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Your Infrastructure                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌──────────────────┐       ┌──────────────────┐       ┌────────────────┐  │
-│   │  vpc-platform    │       │  vpc-data        │       │ vpc-security   │  │
-│   │  10.1.0.0/24     │       │  10.2.0.0/24     │       │ 10.3.0.0/24    │  │
-│   │                  │       │                  │       │                │  │
-│   │  ┌────────────┐  │  VPC  │  ┌────────────┐  │  VPC  │ ┌───────────┐  │  │
-│   │  │ app-vm     │  │Peering│  │ data-vm    │  │Peering│ │security-vm│  │  │
-│   │  │ (psql      │◄─┼──────►┼─►│ (PostgreSQL)│◄┼──────►┼─│ (nginx)   │  │  │
-│   │  │  client)   │  │       │  │             │ │       │ │           │  │  │
-│   │  └────────────┘  │       │  └─────────────┘ │       │ └───────────┘  │  │
-│   │                  │       │                  │       │                │  │
-│   └──────────────────┘       └──────────────────┘       └────────────────┘  │
-│                                                                             │
-│   platform ↔ data: ✅ PEERED                                                │
-│   data ↔ security:  ✅ PEERED                                               │
-│   platform → security: ❌ NOT PEERED (non-transitive)                       │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+![img](img/gcp-vpc-peering-arch.png)
 
 ---
 
@@ -54,7 +32,6 @@ Both solve cross-VPC connectivity, but they work differently:
 | **Use case** | Connect separate teams/environments | Centralized network management |
 | **Firewall** | Each VPC manages own firewall rules | Central firewall management |
 
-**This workshop covers VPC Peering** because it works without an Organization and is the most common pattern for connecting separate environments.
 
 ---
 
@@ -160,6 +137,8 @@ Expected: `Hello from data-vm`
 This is the real test — can app-vm query a database running in a different VPC?
 
 ```bash
+cd ~/gcp-vpc-peering/terraform
+
 DATA_VM_IP=$(terraform output -raw data_vm_ip)
 
 # Check if PostgreSQL port is reachable
@@ -191,6 +170,8 @@ This works because vpc-platform and vpc-data are peered, and the firewall rule o
 ### 4. Test data-vm → security-vm
 
 ```bash
+cd ~/gcp-vpc-peering/terraform
+
 SECURITY_VM_IP=$(terraform output -raw security_vm_ip)
 
 gcloud compute ssh data-vm --zone=us-central1-a --tunnel-through-iap \
@@ -207,6 +188,8 @@ Expected: `Hello from security-vm` — works because data ↔ security are peere
 Now the key test. Platform is peered with data, data is peered with security. Can platform reach security?
 
 ```bash
+cd ~/gcp-vpc-peering/terraform
+
 SECURITY_VM_IP=$(terraform output -raw security_vm_ip)
 
 # This will FAIL — timeout expected
@@ -231,11 +214,15 @@ If you need platform to reach security, you'd have to create a third peering dir
 From inside app-vm, confirm traffic takes the internal path:
 
 ```bash
+cd ~/gcp-vpc-peering/terraform
+
 DATA_VM_IP=$(terraform output -raw data_vm_ip)
 
 gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap \
-    --command="traceroute -m 5 $DATA_VM_IP"
+    --command="sudo traceroute -I $DATA_VM_IP"
 ```
+
+> **Note**: Use `sudo` and `-I` flag. ICMP traceroute requires root privileges. The `-I` makes traceroute use ICMP packets instead of UDP (firewall only allows ICMP, not UDP).
 
 You should see a single hop — traffic goes directly between VPCs, not through any gateway or public internet.
 
