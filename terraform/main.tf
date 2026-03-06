@@ -29,6 +29,23 @@ resource "google_compute_subnetwork" "subnet_platform" {
 }
 
 # -----------------------------------------------------------------------------
+# Cloud NAT - Platform VPC
+# -----------------------------------------------------------------------------
+resource "google_compute_router" "router_platform" {
+  name    = "router-platform"
+  region  = var.region
+  network = google_compute_network.vpc_platform.id
+}
+
+resource "google_compute_router_nat" "nat_platform" {
+  name                               = "nat-platform"
+  router                             = google_compute_router.router_platform.name
+  region                             = var.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+}
+
+# -----------------------------------------------------------------------------
 # VPC - Data
 # -----------------------------------------------------------------------------
 resource "google_compute_network" "vpc_data" {
@@ -41,6 +58,23 @@ resource "google_compute_subnetwork" "subnet_data" {
   ip_cidr_range = "10.2.0.0/24"
   region        = var.region
   network       = google_compute_network.vpc_data.id
+}
+
+# -----------------------------------------------------------------------------
+# Cloud NAT - Data VPC
+# -----------------------------------------------------------------------------
+resource "google_compute_router" "router_data" {
+  name    = "router-data"
+  region  = var.region
+  network = google_compute_network.vpc_data.id
+}
+
+resource "google_compute_router_nat" "nat_data" {
+  name                               = "nat-data"
+  router                             = google_compute_router.router_data.name
+  region                             = var.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
 # -----------------------------------------------------------------------------
@@ -183,6 +217,23 @@ resource "google_compute_subnetwork" "subnet_security" {
   ip_cidr_range = "10.3.0.0/24"
   region        = var.region
   network       = google_compute_network.vpc_security.id
+}
+
+# -----------------------------------------------------------------------------
+# Cloud NAT - Security VPC
+# -----------------------------------------------------------------------------
+resource "google_compute_router" "router_security" {
+  name    = "router-security"
+  region  = var.region
+  network = google_compute_network.vpc_security.id
+}
+
+resource "google_compute_router_nat" "nat_security" {
+  name                               = "nat-security"
+  router                             = google_compute_router.router_security.name
+  region                             = var.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
 # -----------------------------------------------------------------------------

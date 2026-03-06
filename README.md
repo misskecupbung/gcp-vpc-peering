@@ -102,6 +102,7 @@ Terraform creates:
 - `vpc-platform` (10.1.0.0/24) with `app-vm`
 - `vpc-data` (10.2.0.0/24) with `data-vm` (PostgreSQL + sample data)
 - `vpc-security` (10.3.0.0/24) with `security-vm`
+- Cloud NAT for all VPCs (VMs have no external IPs, need NAT for package downloads)
 - Peering: platform ↔ data, data ↔ security
 - Firewall rules for IAP SSH and cross-VPC traffic
 
