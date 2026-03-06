@@ -68,6 +68,13 @@ Both solve cross-VPC connectivity, but they work differently:
 
 ## Deploy
 
+### Step 0: Clone the Repo
+
+```bash
+git clone https://github.com/misskecupbung/gcp-vpc-peering.git
+cd gcp-vpc-peering
+```
+
 ### Step 1: Enable APIs
 
 ```bash
