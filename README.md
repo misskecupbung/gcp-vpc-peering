@@ -72,7 +72,7 @@ Both solve cross-VPC connectivity, but they work differently:
 
 ```bash
 git clone https://github.com/misskecupbung/gcp-vpc-peering.git
-cd gcp-vpc-peering
+cd ~/gcp-vpc-peering/
 ```
 
 ### Step 1: Enable APIs
@@ -88,7 +88,7 @@ gcloud services enable iap.googleapis.com
 ### Step 2: Deploy with Terraform
 
 ```bash
-cd terraform
+cd ~/gcp-vpc-peering/terraform
 
 cp terraform.tfvars.example terraform.tfvars
 sed -i "s/your-project-id/$PROJECT_ID/" terraform.tfvars
@@ -140,7 +140,7 @@ All peerings should show `ACTIVE` state.
 ### 2. Test Connectivity: app-vm → data-vm
 
 ```bash
-cd terraform
+cd ~/gcp-vpc-peering/terraform
 
 DATA_VM_IP=$(terraform output -raw data_vm_ip)
 
@@ -202,7 +202,7 @@ gcloud compute ssh data-vm --zone=us-central1-a --tunnel-through-iap \
 
 Expected: `Hello from security-vm` — works because data ↔ security are peered.
 
-### 5. Prove Non-Transitive Routing (the Gotcha)
+### 5. Prove Non-Transitive Routing
 
 Now the key test. Platform is peered with data, data is peered with security. Can platform reach security?
 
@@ -244,7 +244,7 @@ You should see a single hop — traffic goes directly between VPCs, not through 
 ## Cleanup
 
 ```bash
-cd terraform
+cd ~/gcp-vpc-peering/terraform
 terraform destroy
 ```
 
