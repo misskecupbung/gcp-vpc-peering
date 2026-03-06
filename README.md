@@ -105,6 +105,8 @@ Terraform creates:
 - Peering: platform ↔ data, data ↔ security
 - Firewall rules for IAP SSH and cross-VPC traffic
 
+> **Note**: VMs are created quickly, but startup scripts take 1-2 minutes to install packages. Wait before testing.
+
 ### Step 3: Check Outputs
 
 ```bash
@@ -117,6 +119,8 @@ You'll see:
 - `security_vm_ip` — Internal IP of security-vm
 - `peering_platform_data` — Should be `ACTIVE`
 - `peering_data_security` — Should be `ACTIVE`
+
+> **Note**: If peering shows `INACTIVE` right after `terraform apply`, wait 30-60 seconds and run `terraform refresh` — peering takes a moment to become active.
 
 ---
 
