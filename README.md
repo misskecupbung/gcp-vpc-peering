@@ -12,7 +12,7 @@ This is a common pattern when you have separate teams or environments (platform,
 - Cross-VPC PostgreSQL connectivity (app tier → data tier)
 - Proof that VPC Peering is non-transitive (the #1 gotcha)
 
----
+--- 
 
 ## Architecture
 
@@ -91,7 +91,7 @@ gcloud services enable iap.googleapis.com
 cd terraform
 
 cp terraform.tfvars.example terraform.tfvars
-sed -i '' "s/your-project-id/$PROJECT_ID/" terraform.tfvars
+sed -i "s/your-project-id/$PROJECT_ID/" terraform.tfvars
 
 terraform init
 terraform plan
