@@ -1,39 +1,24 @@
-output "vpc_platform_id" {
-  description = "Platform VPC ID"
-  value       = google_compute_network.vpc_platform.id
-}
-
-output "vpc_data_id" {
-  description = "Data VPC ID"
-  value       = google_compute_network.vpc_data.id
-}
-
-output "app_vm_internal_ip" {
-  description = "Internal IP of app-vm"
+output "app_vm_ip" {
+  description = "Internal IP of app-vm (vpc-platform)"
   value       = google_compute_instance.app_vm.network_interface[0].network_ip
 }
 
-output "db_vm_internal_ip" {
-  description = "Internal IP of db-vm"
-  value       = google_compute_instance.db_vm.network_interface[0].network_ip
+output "data_vm_ip" {
+  description = "Internal IP of data-vm (vpc-data)"
+  value       = google_compute_instance.data_vm.network_interface[0].network_ip
 }
 
-output "vpc_connector_id" {
-  description = "VPC Access Connector ID"
-  value       = google_vpc_access_connector.connector.id
+output "security_vm_ip" {
+  description = "Internal IP of security-vm (vpc-security)"
+  value       = google_compute_instance.security_vm.network_interface[0].network_ip
 }
 
-output "psc_endpoint_ip" {
-  description = "Private Service Connect endpoint IP"
-  value       = google_compute_address.psc_address.address
-}
-
-output "peering_status" {
-  description = "VPC Peering status"
+output "peering_platform_data" {
+  description = "platform ↔ data peering state"
   value       = google_compute_network_peering.platform_to_data.state
 }
 
-output "cloud_run_url" {
-  description = "Cloud Run service URL"
-  value       = google_cloud_run_v2_service.my_api.uri
+output "peering_data_security" {
+  description = "data ↔ security peering state"
+  value       = google_compute_network_peering.data_to_security.state
 }

@@ -1,54 +1,60 @@
-# GCP VPC Private Access
+# GCP VPC Peering
 
-Set up private connectivity in GCP using VPC Peering, Serverless VPC Access Connector, and Private Service Connect.
+Connect VPCs privately so resources in each network can talk to each other without going through the public internet.
 
-In production environments, you don't want your services talking over the public internet. This workshop shows you how to keep traffic private — connect VPCs without public IPs, let Cloud Run access internal databases, and route Google API calls through private endpoints.
+This is a common pattern when you have separate teams or environments (platform, data, security) that need internal connectivity. VPC Peering gives you private RFC 1918 routing between networks — no VPN, no public IPs.
 
 > **Duration**: 45 minutes  
 > **Level**: Intermediate
 
-**What you'll achieve:**
-- Resources communicate using internal IPs only (no public internet)
-- Cloud Run connects to private VPC resources (databases, internal APIs)
-- Google API traffic stays within Google's network
-- Zero public IP exposure for backend services
+**What you'll build:**
+- Three VPCs with selective peering
+- Cross-VPC PostgreSQL connectivity (app tier → data tier)
+- Proof that VPC Peering is non-transitive (the #1 gotcha)
 
 ---
 
-## What You'll Build
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              Your Infrastructure                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│   ┌────────────────┐       VPC Peering        ┌────────────────┐            │
-│   │  vpc-platform  │◄────────────────────────►│   vpc-data     │            │
-│   │  10.1.0.0/24   │                          │  10.2.0.0/24   │            │
-│   │                │                          │                │            │
-│   │  ┌──────────┐  │                          │  ┌──────────┐  │            │
-│   │  │ app-vm   │  │                          │  │ db-vm    │  │            │
-│   │  └──────────┘  │                          │  └──────────┘  │            │
-│   │                │                          └────────────────┘            │
-│   │  ┌───────────────────┐                                                  │
-│   │  │  VPC Connector    │◄─── my-api (Cloud Run)                           │
-│   │  │  10.8.0.0/28      │                                                  │
-│   │  └───────────────────┘                                                  │
-│   │                │                                                        │
-│   │  ┌───────────────────┐     ┌──────────────────┐                         │
-│   │  │ PSC Endpoint      │────►│ Google Cloud     │                         │
-│   │  │ 10.1.0.100        │     │ Storage (private)│                         │
-│   │  └───────────────────┘     └──────────────────┘                         │
-│   └────────────────┘                                                        │
+│   ┌──────────────────┐       ┌──────────────────┐       ┌────────────────┐  │
+│   │  vpc-platform    │       │  vpc-data        │       │ vpc-security   │  │
+│   │  10.1.0.0/24     │       │  10.2.0.0/24     │       │ 10.3.0.0/24    │  │
+│   │                  │       │                  │       │                │  │
+│   │  ┌────────────┐  │  VPC  │  ┌────────────┐  │  VPC  │ ┌───────────┐  │  │
+│   │  │ app-vm     │  │Peering│  │ data-vm    │  │Peering│ │security-vm│  │  │
+│   │  │ (psql      │◄─┼──────►┼─►│ (PostgreSQL)│◄┼──────►┼─│ (nginx)   │  │  │
+│   │  │  client)   │  │       │  │             │ │       │ │           │  │  │
+│   │  └────────────┘  │       │  └─────────────┘ │       │ └───────────┘  │  │
+│   │                  │       │                  │       │                │  │
+│   └──────────────────┘       └──────────────────┘       └────────────────┘  │
+│                                                                             │
+│   platform ↔ data: ✅ PEERED                                                │
+│   data ↔ security:  ✅ PEERED                                               │
+│   platform → security: ❌ NOT PEERED (non-transitive)                       │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| Service | What It Does |
-|---------|--------------|
-| **VPC Peering** | Connect two VPCs privately without going through the internet |
-| **Serverless VPC Access** | Let Cloud Run / Cloud Functions reach private VPC resources |
-| **Private Service Connect** | Access Google APIs through private endpoints |
+---
+
+## VPC Peering vs Shared VPC
+
+Both solve cross-VPC connectivity, but they work differently:
+
+| | VPC Peering | Shared VPC |
+|-|-------------|------------|
+| **Setup** | Between any two VPCs | Requires GCP Organization |
+| **Ownership** | Each team manages their own VPC | Central network team manages VPC |
+| **Routing** | Non-transitive (A↔B, B↔C doesn't mean A↔C) | Shared subnets across projects |
+| **Use case** | Connect separate teams/environments | Centralized network management |
+| **Firewall** | Each VPC manages own firewall rules | Central firewall management |
+
+**This workshop covers VPC Peering** because it works without an Organization and is the most common pattern for connecting separate environments.
 
 ---
 
@@ -60,7 +66,7 @@ In production environments, you don't want your services talking over the public
 
 ---
 
-## Deploy Infrastructure
+## Deploy
 
 ### Step 1: Enable APIs
 
@@ -69,200 +75,174 @@ export PROJECT_ID="your-project-id"
 gcloud config set project $PROJECT_ID
 
 gcloud services enable compute.googleapis.com
-gcloud services enable vpcaccess.googleapis.com
-gcloud services enable run.googleapis.com
-gcloud services enable cloudbuild.googleapis.com
-gcloud services enable dns.googleapis.com
 gcloud services enable iap.googleapis.com
 ```
 
-### Step 2: Build Container Image
-
-Terraform doesn't build Docker images, so build the Cloud Run image first:
-
-```bash
-cd app
-gcloud builds submit --tag gcr.io/$PROJECT_ID/my-api
-cd ..
-```
-
-### Step 3: Deploy with Terraform
+### Step 2: Deploy with Terraform
 
 ```bash
 cd terraform
 
-# Configure variables with your project ID
 cp terraform.tfvars.example terraform.tfvars
 sed -i '' "s/your-project-id/$PROJECT_ID/" terraform.tfvars
 
-# Deploy
 terraform init
 terraform plan
 terraform apply
 ```
 
 Terraform creates:
-- 2 VPCs with subnets
-- 2 test VMs (no public IPs)
-- VPC Peering between the VPCs
-- Serverless VPC Access Connector
-- Private Service Connect endpoint for Google APIs
-- Private DNS zone
-- Firewall rules
-- Cloud Run service (connected to VPC)
+- `vpc-platform` (10.1.0.0/24) with `app-vm`
+- `vpc-data` (10.2.0.0/24) with `data-vm` (PostgreSQL + sample data)
+- `vpc-security` (10.3.0.0/24) with `security-vm`
+- Peering: platform ↔ data, data ↔ security
+- Firewall rules for IAP SSH and cross-VPC traffic
 
-### Step 4: Check Outputs
+### Step 3: Check Outputs
 
 ```bash
 terraform output
 ```
 
 You'll see:
-- `app_vm_internal_ip` - IP of app-vm
-- `db_vm_internal_ip` - IP of db-vm
-- `vpc_connector_id` - Connector for Cloud Run
-- `psc_endpoint_ip` - Private endpoint (10.1.0.100)
-- `peering_status` - Should be ACTIVE
-- `cloud_run_url` - Cloud Run service URL
+- `app_vm_ip` — Internal IP of app-vm
+- `data_vm_ip` — Internal IP of data-vm
+- `security_vm_ip` — Internal IP of security-vm
+- `peering_platform_data` — Should be `ACTIVE`
+- `peering_data_security` — Should be `ACTIVE`
 
 ---
 
-## Test VPC Peering
+## Verify
 
-Verify that app-vm can reach db-vm through the peered connection.
+### 1. Check Peering Status
 
 ```bash
-# Make sure you're in the terraform directory
+gcloud compute networks peerings list --network=vpc-platform
+gcloud compute networks peerings list --network=vpc-data
+gcloud compute networks peerings list --network=vpc-security
+```
+
+All peerings should show `ACTIVE` state.
+
+### 2. Test Connectivity: app-vm → data-vm
+
+```bash
 cd terraform
 
-# Get db-vm IP from Terraform output
-DB_VM_IP=$(terraform output -raw db_vm_internal_ip)
-echo "db-vm IP: $DB_VM_IP"
+DATA_VM_IP=$(terraform output -raw data_vm_ip)
 
-# SSH into app-vm and ping db-vm
+# Ping
 gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap \
-    --command="ping -c 3 $DB_VM_IP"
+    --command="ping -c 3 $DATA_VM_IP"
 
-# Test HTTP
+# HTTP (nginx)
 gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap \
-    --command="curl http://$DB_VM_IP"
+    --command="curl -s http://$DATA_VM_IP"
 ```
 
-Expected output: "Hello from db-vm"
+Expected: `Hello from data-vm`
 
----
+### 3. Test PostgreSQL Across the Peering
 
-## Test Serverless VPC Access
-
-Cloud Run is already deployed via Terraform. Test connectivity to VPC resources:
+This is the real test — can app-vm query a database running in a different VPC?
 
 ```bash
-# Make sure you're in the terraform directory
-cd terraform
+DATA_VM_IP=$(terraform output -raw data_vm_ip)
 
-# Get Cloud Run URL from Terraform
-SERVICE_URL=$(terraform output -raw cloud_run_url)
-echo "Cloud Run URL: $SERVICE_URL"
-
-# Test health endpoint
-curl $SERVICE_URL
-
-# Test connectivity to internal VM
-APP_VM_IP=$(terraform output -raw app_vm_internal_ip)
-echo "Testing connection to app-vm: $APP_VM_IP"
-curl "$SERVICE_URL/check-internal/$APP_VM_IP"
+# Check if PostgreSQL port is reachable
+gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap \
+    --command="pg_isready -h $DATA_VM_IP -U appuser"
 ```
 
-Expected: Cloud Run reaches the internal VM through VPC connector.
+Expected: `accepting connections`
 
----
-
-## Test Private Service Connect
-
-Verify that Google APIs are accessed through the private endpoint.
+Now query the sample data:
 
 ```bash
-# SSH into app-vm
-gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap
-
-# Check DNS resolution - should return 10.1.0.100
-nslookup storage.googleapis.com
-
-# Test Cloud Storage access through private endpoint
-gsutil ls gs://gcp-public-data-landsat 2>/dev/null | head -5
-
-# Exit
-exit
+gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap \
+    --command="PGPASSWORD=changeme123 psql -h $DATA_VM_IP -U appuser -d appdb -c 'SELECT * FROM orders;'"
 ```
 
-Expected: DNS resolves to `10.1.0.100` (your PSC endpoint), not a public IP.
+Expected:
 
----
+```
+ id | product  | quantity |         created_at
+----+----------+----------+----------------------------
+  1 | Widget A |       10 | 2026-03-06 ...
+  2 | Widget B |       25 | 2026-03-06 ...
+  3 | Widget C |        5 | 2026-03-06 ...
+```
 
-## Verification Summary
+This works because vpc-platform and vpc-data are peered, and the firewall rule on vpc-data allows TCP:5432 from 10.1.0.0/24.
+
+### 4. Test data-vm → security-vm
 
 ```bash
-cd terraform
+SECURITY_VM_IP=$(terraform output -raw security_vm_ip)
 
-echo "=== VPC Peering ==="
-terraform output peering_status
+gcloud compute ssh data-vm --zone=us-central1-a --tunnel-through-iap \
+    --command="ping -c 3 $SECURITY_VM_IP"
 
-echo ""
-echo "=== VPC Connector ==="
-gcloud compute networks vpc-access connectors describe my-connector \
-    --region=us-central1 --format="value(state)"
-
-echo ""
-echo "=== PSC Endpoint ==="
-terraform output psc_endpoint_ip
-
-echo ""
-echo "=== Cloud Run ==="
-terraform output cloud_run_url
+gcloud compute ssh data-vm --zone=us-central1-a --tunnel-through-iap \
+    --command="curl -s http://$SECURITY_VM_IP"
 ```
+
+Expected: `Hello from security-vm` — works because data ↔ security are peered.
+
+### 5. Prove Non-Transitive Routing (the Gotcha)
+
+Now the key test. Platform is peered with data, data is peered with security. Can platform reach security?
+
+```bash
+SECURITY_VM_IP=$(terraform output -raw security_vm_ip)
+
+# This will FAIL — timeout expected
+gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap \
+    --command="ping -c 3 -W 3 $SECURITY_VM_IP"
+```
+
+**Expected: 100% packet loss.** app-vm cannot reach security-vm even though both are peered with vpc-data.
+
+This is non-transitive routing — the most important thing to understand about VPC Peering. Each peering is an independent connection. Traffic does not hop through an intermediate VPC.
+
+```
+platform ↔ data:     ✅ peered, direct route exists
+data ↔ security:     ✅ peered, direct route exists
+platform → security: ❌ no peering, no route
+```
+
+If you need platform to reach security, you'd have to create a third peering directly between them.
+
+### 6. Verify Private Routing
+
+From inside app-vm, confirm traffic takes the internal path:
+
+```bash
+DATA_VM_IP=$(terraform output -raw data_vm_ip)
+
+gcloud compute ssh app-vm --zone=us-central1-a --tunnel-through-iap \
+    --command="traceroute -m 5 $DATA_VM_IP"
+```
+
+You should see a single hop — traffic goes directly between VPCs, not through any gateway or public internet.
 
 ---
 
 ## Cleanup
 
 ```bash
-# Make sure you're in the terraform directory
 cd terraform
-
-# Destroy all Terraform resources
 terraform destroy
-
-# Delete container image (not managed by Terraform)
-gcloud container images delete gcr.io/$PROJECT_ID/my-api --force-delete-tags --quiet
 ```
-
----
-
-## Troubleshooting
-
-### VPC Peering shows INACTIVE
-Check both peering connections exist:
-```bash
-gcloud compute networks peerings list --network=vpc-platform
-gcloud compute networks peerings list --network=vpc-data
-```
-
-### Cloud Run can't reach internal IPs
-1. Connector must be READY: `gcloud compute networks vpc-access connectors list --region=us-central1`
-2. Firewall must allow connector range (10.8.0.0/28)
-3. Cloud Run and connector must be in the same region
-
-### DNS still resolves to public IPs
-1. VM must be in vpc-platform (the network linked to DNS zone)
-2. Flush DNS cache: `sudo systemd-resolve --flush-caches`
 
 ---
 
 ## Resources
 
-- [VPC Peering](https://cloud.google.com/vpc/docs/vpc-peering)
-- [Serverless VPC Access](https://cloud.google.com/vpc/docs/serverless-vpc-access)
-- [Private Service Connect](https://cloud.google.com/vpc/docs/private-service-connect)
+- [VPC Network Peering](https://cloud.google.com/vpc/docs/vpc-peering)
+- [Shared VPC Overview](https://cloud.google.com/vpc/docs/shared-vpc)
+- [VPC Peering Limits](https://cloud.google.com/vpc/docs/quota#vpc-peering)
 
 ---
 
